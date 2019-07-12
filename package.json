@@ -1,0 +1,26 @@
+{
+  "name": "remixcontainer",
+  "version": "0.0.5",
+  "description": "Container app for etable remix apps. Allows run and edit remix interactive applications",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArtemGrishanov/remixcontainer.git"
+  },
+  "keywords": [
+    "javascript",
+    "spa",
+    "redux",
+    "interactive",
+    "content"
+  ],
+  "author": "Artem Grishanov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ArtemGrishanov/remixcontainer/issues"
+  },
+  "homepage": "https://github.com/ArtemGrishanov/remixcontainer#readme"
+}
