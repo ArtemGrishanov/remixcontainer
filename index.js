@@ -1,5 +1,3 @@
-import MicroDataEditor from 'DataEditor'
-
 /**
 * some styles for container and editor
 */
@@ -9,6 +7,12 @@ window.Rmx = window.Rmx || {
     getc: function(event) {
         var ssid = event.currentTarget.getAttribute('data-ssid');
         return Rmx.Containers[ssid];
+    },
+    getpp: function(prop) {
+        return 'data-prop="'+prop+'"';
+    },
+    getss: function(sessionId) {
+        return 'data-ssid="'+sessionId+'"';
     },
     Containers: {
 
@@ -32,7 +36,7 @@ window.Rmx = window.Rmx || {
             var c = Rmx.getc(e);
             var prop = e.currentTarget.getAttribute('data-prop');
             var value = e.currentTarget.value;
-            c.setProperty(prop, value);
+            c.setData({[prop]: value});
         },
         onHLAdd: function(e) {
             var c = Rmx.getc(e);
@@ -44,6 +48,18 @@ window.Rmx = window.Rmx || {
             var prop = e.currentTarget.getAttribute('data-prop');
             var elementId = e.currentTarget.getAttribute('data-elementid');
             c.deleteHashlistElement(prop, elementId);
+        },
+        onHLETop: function(e) {
+            var c = Rmx.getc(e);
+            var prop = e.currentTarget.getAttribute('data-prop');
+            var index = e.currentTarget.getAttribute('data-index');
+            c.changePositionInHashlist(prop, index, index-1);
+        },
+        onHLEDown: function(e) {
+            var c = Rmx.getc(e);
+            var prop = e.currentTarget.getAttribute('data-prop');
+            var index = e.currentTarget.getAttribute('data-index');
+            c.changePositionInHashlist(prop, index, index+1);
         }
     },
     Util: {
@@ -248,13 +264,6 @@ RemixContainer.prototype.receiveMessage = function({origin = null, data = {}, so
     //TODO many others
 }
 
-RemixContainer.prototype.setProperty = function(prop, value) {
-    this.iframe.contentWindow.postMessage({
-        method: 'setdata',
-        data: {[prop]: value}
-    }, this.appOrigin);
-}
-
 /**
  * Sync local screens with application
  * Application sent screen modifications: "added", "changed", "deleted" arrays
@@ -285,6 +294,14 @@ RemixContainer.prototype.getScreen = function(id, screens) {
     return (screens && screens.length > 0) ? screens.find( (s) => s.screenId === id) : null;
 }
 
+// RemixContainer.prototype.setProperty = function(prop, value) {
+//     this.iframe.contentWindow.postMessage({
+//         method: 'setdata',
+//         data: {[prop]: value},
+//         forceFeedback: true
+//     }, this.appOrigin);
+// }
+
 /**
 * Sends the message with new data to app
 */
@@ -292,7 +309,8 @@ RemixContainer.prototype.setData = function(data) {
     this.log('setdata message sent');
     this.iframe.contentWindow.postMessage({
         method: 'setdata',
-        data: data
+        data: data,
+        forceFeedback: true
     }, this.appOrigin);
 }
 
@@ -373,36 +391,53 @@ RemixContainer.prototype.selectControlPanelItem = function(itemIndex) {
     }
 }
 
-RemixContainer.prototype.renderLine = function(name, value, depth, isHashlist, isHashlistElement, propPath) {
+RemixContainer.prototype.renderLine = function(name, value, depth, isHashlist, isHashlistElement, propPath, hlElementIndex) {
     depth = depth || 0;
     var html = '', htControls = '';
     if (isHashlist) {
         htControls += '<span onclick="Rmx.Actions.onHLAdd(event)" data-prop="'+propPath+'" data-ssid="'+this.sessionId+'"">[+]</span>';
     }
     if (isHashlistElement) {
-        htControls += '<span onclick="Rmx.Actions.onHLEDelete(event)" data-prop="'+Rmx.Util.getParentPropPath(propPath)+'" data-ssid="'+this.sessionId+'" data-elementid="'+name+'">[-]</span>';
+        var p = Rmx.getpp(Rmx.Util.getParentPropPath(propPath));
+        var s = Rmx.getss(this.sessionId);
+        htControls += '<span onclick="Rmx.Actions.onHLEDelete(event)" '+p+' '+s+' data-elementid="'+name+'">[-]</span>';
+        htControls += '<span onclick="Rmx.Actions.onHLETop(event)" class="arr __top" data-index="'+hlElementIndex+'" '+p+' '+s+'></span>' +
+            '<span onclick="Rmx.Actions.onHLEDown(event)" class="arr __down" data-index="'+hlElementIndex+'" '+p+' '+s+'></span>';
     }
-    html += '<tr><td><span style="padding-left:'+(depth*10)+'px">'+htControls+'</span>'+name+'</td><td>';
-    if (value) {
+    html += '<tr><td><span style="padding-left:'+(depth*10)+'px"></span>'+name+' '+htControls+'</td><td>';
+    if (value !== undefined) {
         html += '<input value=\"'+value+'\"/ onfocusout="Rmx.Actions.setProperty(event)" data-prop="'+propPath+'" data-ssid="'+this.sessionId+'"></td></tr>';
     }
     return html;
 }
 
 RemixContainer.prototype.renderBlock = function(properties, blockName, depth, propPath, isHashlistElement) {
+    if (!properties) return;
     var html = '';
     blockName = blockName || '';
     propPath = (propPath) ? (propPath + '.') : '';
-    for (var key in properties) {
-        if (key === '_orderedIds') continue;
-        if (properties.hasOwnProperty(key)) {
-            if (typeof properties[key] === 'object') {
-                var isHashlist = Rmx.Util.isHashlist(properties[key]);
-                html += this.renderLine(key, undefined, depth, isHashlist, isHashlistElement, propPath + key);
-                html += this.renderBlock(properties[key], '', depth+1, propPath + key, isHashlist === true);
+    if (properties._orderedIds) {
+        // hashlist
+        for (var i = 0; i < properties._orderedIds.length; i++) {
+            var id = properties._orderedIds[i];
+            //properties[id]
+            var isHashlist = Rmx.Util.isHashlist(properties[id]);
+            html += this.renderLine(id, undefined, depth, isHashlist === true, true, propPath + id, i);
+            html += this.renderBlock(properties[id], '', depth+1, propPath + id, false);
+        }
+    }
+    else {
+        for (var key in properties) {
+            //if (key === '_orderedIds') continue;
+            if (properties.hasOwnProperty(key)) {
+                if (typeof properties[key] === 'object') {
+                    var isHashlist = Rmx.Util.isHashlist(properties[key]);
+                    html += this.renderLine(key, undefined, depth, isHashlist === true, false/*isHashlistElement*/, propPath + key);
+                    html += this.renderBlock(properties[key], '', depth+1, propPath + key, false);
+                }
+                else
+                    html += this.renderLine(key, properties[key], depth+1, false, false/*isHashlistElement*/, propPath + key);
             }
-            else
-                html += this.renderLine(key, properties[key], depth+1, isHashlist, isHashlistElement, propPath + key);
         }
     }
     return html;
@@ -450,7 +485,7 @@ RemixContainer.prototype.renderScreenViewer = function(screens) {
         iframedoc.body.appendChild(this.screenContainer);
         var style = document.createElement('style');
         //TODO get css string from build/statix/css/main
-        style.type = 'text/css';style.appendChild(document.createTextNode('body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,Fira Sans,Droid Sans,Helvetica Neue,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}code{font-family:source-code-pro,Menlo,Monaco,Consolas,Courier New,monospace}p{margin:0;padding:0}.eng-app,.eng-screen{background-color:#eee}.eng-screen{min-width:100px;min-height:40px}.eng-quiz-slide{width:100%;border:1px solid #000}'))
+        style.type = 'text/css';style.appendChild(document.createTextNode('body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,Fira Sans,Droid Sans,Helvetica Neue,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}code{font-family:source-code-pro,Menlo,Monaco,Consolas,Courier New,monospace}p{margin:0;padding:0}.eng-app,.eng-screen{background-color:#eee}.eng-screen{min-width:100px;min-height:40px}.rmx-quiz_block{width:100%;border:1px solid #000}'))
         iframedoc.body.appendChild(style);
         var self = this;
         document.querySelector('.js-viewScreens').addEventListener("click", function() {
